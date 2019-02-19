@@ -1,0 +1,3 @@
+import promap
+
+promap.main()

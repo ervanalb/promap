@@ -8,7 +8,7 @@ in conjunction with your digital video workflow
 to do projection mapping.
 
 `promap` uses a projector and a single camera
-to compute the physical scene as viewed from the projector
+to compute the physical scene as viewed from the projector,
 as well as a coarse disparity (depth) map.
 
 You can import the maps that it generates straight into your digital video workflow,

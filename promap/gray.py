@@ -31,6 +31,6 @@ def generate_images(w, h):
     return list(bw) + list(vertical_bars) + list(horizontal_bars)
 
 def black_white(w, h):
-    black = np.full((height, width), 0, dtype="uint8")
-    white = np.full((height, width), 255, dtype="uint8")
+    black = np.full((h, w), 0, dtype="uint8")
+    white = np.full((h, w), 255, dtype="uint8")
     return (black, white)

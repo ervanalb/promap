@@ -6,6 +6,8 @@ class ArgumentError(Exception):
 
 def main():
     logger = logging.getLogger(__name__)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser(prog="promap")
 
     def size(s):
@@ -34,6 +36,9 @@ def main():
 
     # Gray code / project
     parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns from")
+
+    # Project
+    parser.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
 
     args = parser.parse_args()
 
@@ -64,7 +69,7 @@ def main():
 
     for op in ops:
         if getattr(args, op):
-            globals()[op](args)
+            globals()["op_" + op](args)
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
@@ -75,7 +80,7 @@ def filename2format(fn, places=3):
     else:
         return fn[0:last_dot] + index + fn[last_dot:]
 
-def gray(args):
+def op_gray(args):
     import promap.gray
 
     logger = logging.getLogger(__name__)
@@ -98,28 +103,39 @@ def gray(args):
             cv2.imwrite(fn, im)
 
 def project_get_projector_size(args):
-    pass
+    import promap.project
+    args.projector_size = promap.project.get_size(args.screen)
 
-def project(args):
+def op_project(args):
+    import promap.project
+
     logger = logging.getLogger(__name__)
-    logger.warning("project not implemented")
 
-def capture(args):
+    if not args.projector_size:
+        if args.project:
+            project_get_projector_size(args)
+
+    if not args.projector_size:
+        raise ArgumentError("Unknown projector size")
+
+    promap.project.project(args.gray_code_images)
+
+def op_capture(args):
     logger = logging.getLogger(__name__)
     logger.warning("capture not implemented")
 
-def decode(args):
+def op_decode(args):
     logger = logging.getLogger(__name__)
     logger.warning("decode not implemented")
 
-def invert(args):
+def op_invert(args):
     logger = logging.getLogger(__name__)
     logger.warning("invert not implemented")
 
-def lookup(args):
+def op_lookup(args):
     logger = logging.getLogger(__name__)
     logger.warning("lookup not implemented")
 
-def disparity(args):
+def op_disparity(args):
     logger = logging.getLogger(__name__)
     logger.warning("disparity not implemented")

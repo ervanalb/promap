@@ -1,5 +1,6 @@
 import argparse
 import logging
+import itertools
 
 class ArgumentError(Exception):
     pass
@@ -41,6 +42,9 @@ def main():
     parser.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
 
     args = parser.parse_args()
+
+    # Internal state
+    args.gray_code_images = None
 
     ops = ("gray",
         "project",
@@ -88,9 +92,9 @@ def op_gray(args):
     if not args.projector_size:
         if args.project:
             project_get_projector_size(args)
-
-    if not args.projector_size:
-        raise ArgumentError("Unknown projector size")
+            logger.info("Projector size not specified, querying screen gave {}x{}".format(*args.projector_size))
+        else:
+            raise ArgumentError("Unknown projector size")
 
     args.gray_code_images = promap.gray.generate_images(*args.projector_size)
 
@@ -111,9 +115,25 @@ def op_project(args):
 
     logger = logging.getLogger(__name__)
 
-    if not args.projector_size:
-        if args.project:
-            project_get_projector_size(args)
+    if not args.gray_code_images:
+        # Load the gray code from the given files
+        import cv2
+        filename_format = filename2format(args.gray_file if args.gray_file else "gray.png")
+        images = []
+        for i in itertools.count():
+            fn = filename_format.format(i)
+            im = cv2.imread(fn, cv2.IMREAD_GRAYSCALE)
+            if im is None:
+                break
+            if not args.projector_size:
+                args.projector_size = (im.shape[1], im.shape[0])
+            else:
+                if (im.shape[1], im.shape[0]) != args.projector_size:
+                    raise ArgumentError("Image {} does not match projector size {}x{}".format(fn, args.projector_size[0], args.projector_size[1]))
+            images.append(im)
+        if not images:
+            raise ArgumentError("No gray codes to project")
+        args.gray_code_images = images
 
     if not args.projector_size:
         raise ArgumentError("Unknown projector size")

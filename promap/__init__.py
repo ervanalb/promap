@@ -41,6 +41,9 @@ def main():
     # Project
     parser.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
 
+    # Capture
+    parser.add_argument("--camera", type=str, help="The name of the camera device to open")
+
     args = parser.parse_args()
 
     # Internal state
@@ -142,7 +145,12 @@ def op_project(args):
 
 def op_capture(args):
     logger = logging.getLogger(__name__)
-    logger.warning("capture not implemented")
+    import promap.capture
+
+    if not args.camera_size:
+        args.camera_size = promap.capture.get_camera_size(args.camera)
+
+    promap.capture.capture(args.camera, *args.camera_size, )
 
 def op_decode(args):
     logger = logging.getLogger(__name__)

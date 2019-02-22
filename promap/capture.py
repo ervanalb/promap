@@ -1,5 +1,7 @@
 import cv2
 import logging
+import threading
+import time
 
 class CaptureError(Exception):
     pass
@@ -19,27 +21,35 @@ def get_camera_size(camera):
     cap = open_camera(camera)
     w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    print(w, h)
+    w = int(w)
+    h = int(h)
+    logger = logging.getLogger(__name__)
+    logger.info("Queried camera for size and got {} x {}".format(w, h))
  
-    cap.close()
+    cap.release()
+    return (w, h)
 
 def perform_capture(cap):
+    logger = logging.getLogger(__name__)
     run = True
     cur_frame = None
     def _worker():
         nonlocal cur_frame
+        nonlocal run
         while run:
             (retval, frame) = cap.read()
             cur_frame = frame
 
     def _cur_frame():
         # locking?
+        logger.info("Captured frame")
         return cur_frame
 
     t = threading.Thread(target=_worker)
     t.daemon = True
 
     def _stop():
+        nonlocal run
         run = False
         t.join()
 
@@ -53,9 +63,25 @@ def capture(camera, width, height):
     cap.set(cv2.CAP_PROP_SETTINGS, 1)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    if w != width or h != height:
+        w = int(w)
+        h = int(h)
+        raise CaptureError("Could not set camera resolution to {} x {} (camera suggests {} x {})".format(width, height, w, h))
 
     (get_frame, stop) = perform_capture(cap)
-    time.sleep(3)
-    stop()
 
-    cap.close()
+    frames = []
+
+    def _capture():
+        frame = get_frame()
+        frames.append(frame)
+        return frame
+
+    def _stop():
+        stop()
+        cap.release()
+        return frames
+
+    return (_capture, _stop)

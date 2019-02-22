@@ -36,7 +36,7 @@ def get_size(screen_name=None):
     s = get_screen(screen_name)
     return (s.size().width(), s.size().height())
 
-def project(images, startup_delay=5, period=1, screen_name=None):
+def project(images, startup_delay=5, period=1, screen_name=None, capture_callback=None):
     logger = logging.getLogger(__name__)
 
     s = get_screen(screen_name)
@@ -67,6 +67,8 @@ def project(images, startup_delay=5, period=1, screen_name=None):
     current_image = -1
     def advance():
         nonlocal current_image
+        if current_image >= 0 and capture_callback is not None:
+            capture_callback()
         current_image += 1
         if current_image >= len(images):
             app.quit()

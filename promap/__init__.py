@@ -36,13 +36,22 @@ def main():
     parser.add_argument("--projector-size", type=size, help="The projector resolution")
 
     # Gray code / project
-    parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns from")
+    parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns to / from")
 
     # Project
     parser.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
 
+    # Project / Capture
+    parser.add_argument("--startup_delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
+                        default=5)
+    parser.add_argument("--period", type=float, help="How long to display each frame for in seconds",
+                        default=1)
+
     # Capture
     parser.add_argument("--camera", type=str, help="The name of the camera device to open")
+
+    # Capture / decode
+    parser.add_argument("--capture-file", type=str, help="The file to save / load the captured images to / from")
 
     args = parser.parse_args()
 
@@ -74,9 +83,20 @@ def main():
         missing = [op for (i, op) in enumerate(ops) if i in range(first, last + 1) and i not in ops_indices]
         raise ArgumentError("Non-contiguous operations specified. Missing: " + ", ".join(missing))
 
-    for op in ops:
-        if getattr(args, op):
-            globals()["op_" + op](args)
+    if args.gray:
+        op_gray(args)
+    if args.project:
+        op_project(args)
+    if args.capture and not args.project: # capturing while projecting is handled by op_project
+        op_capture(args)
+    if args.decode:
+        op_decode(args)
+    if args.invert:
+        op_invert(args)
+    if args.lookup:
+        op_lookup(args)
+    if args.disparity:
+        op_disparity(args)
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
@@ -141,7 +161,35 @@ def op_project(args):
     if not args.projector_size:
         raise ArgumentError("Unknown projector size")
 
-    promap.project.project(args.gray_code_images)
+    if args.capture:
+        project_and_capture(args) 
+    else:
+        promap.project.project(args.gray_code_images, args.startup_delay, args.period, args.screen)
+
+def project_and_capture(args):
+    logger = logging.getLogger(__name__)
+    import promap.capture
+
+    if not args.camera_size:
+        args.camera_size = promap.capture.get_camera_size(args.camera)
+    (capture, stop) = promap.capture.capture(args.camera, *args.camera_size)
+
+    i = 0
+    filename_format = None
+    if not args.decode or args.capture_file:
+        filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
+
+    def _capture_callback():
+        nonlocal i
+        im = capture()
+        if filename_format is not None:
+            import cv2
+            fn = filename_format.format(i)
+            cv2.imwrite(fn, im)
+        i += 1
+
+    promap.project.project(args.gray_code_images, args.startup_delay, args.period, args.screen, _capture_callback)
+    stop()
 
 def op_capture(args):
     logger = logging.getLogger(__name__)
@@ -150,7 +198,24 @@ def op_capture(args):
     if not args.camera_size:
         args.camera_size = promap.capture.get_camera_size(args.camera)
 
-    promap.capture.capture(args.camera, *args.camera_size, )
+    (capture, stop) = promap.capture.capture(args.camera, *args.camera_size)
+    i = 0
+    filename_format = None
+    if not args.decode or args.capture_file:
+        filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
+    try:
+        print("Press Ctrl-C to finish capturing.")
+        while True:
+            input("Press [Enter] to capture image {:03d}...".format(i))
+            im = capture()
+            if filename_format is not None:
+                import cv2
+                fn = filename_format.format(i)
+                cv2.imwrite(fn, im)
+            i += 1
+    except KeyboardInterrupt:
+        pass
+    stop()
 
 def op_decode(args):
     logger = logging.getLogger(__name__)

@@ -267,7 +267,9 @@ def op_decode(args):
     if not args.invert or args.decoded_file:
         import cv2
         fn = args.decoded_file if args.decoded_file else "decoded.png"
-        im = np.dstack((args.decoded_image, np.zeros(x.shape))).astype(np.uint16)
+        im = np.dstack((np.zeros(x.shape), y / args.projector_size[1], x / args.projector_size[0]))
+        maxval = (1 << 16) - 1
+        im = np.round(np.maximum(np.minimum(im * maxval, maxval), 0)).astype(np.uint16)
         cv2.imwrite(fn, im)
 
 def op_invert(args):

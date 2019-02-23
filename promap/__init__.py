@@ -28,7 +28,6 @@ def main():
     parser.add_argument("-d", "--decode", action="store_true", help="Decode a series of gray code images into a lookup image that goes from camera to projector space")
     parser.add_argument("-i", "--invert", action="store_true", help="Invert a lookup image (so that it goes from projector to camera space)")
     parser.add_argument("-l", "--lookup", action="store_true", help="Convert an image from camera space to projector space using a lookup image")
-    parser.add_argument("-y", "--disparity", action="store_true", help="Compute disparity of a lookup image")
     parser.add_argument("-a", "--all", action="store_true", help="Do all of these operations")
 
     # Global parameters
@@ -45,7 +44,7 @@ def main():
     parser.add_argument("--startup_delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
                         default=5)
     parser.add_argument("--period", type=float, help="How long to display each frame for in seconds",
-                        default=1)
+                        default=2)
 
     # Capture
     parser.add_argument("--camera", type=str, help="The name of the camera device to open")
@@ -58,6 +57,7 @@ def main():
 
     # Decode / invert
     parser.add_argument("--decoded-file", type=str, help="The file to save / load the decoded image to / from")
+    parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize the color values in the decoded file")
 
     args = parser.parse_args()
 
@@ -71,8 +71,7 @@ def main():
         "capture",
         "decode",
         "invert",
-        "lookup",
-        "disparity")
+        "lookup")
 
     if args.all:
         for op in ops:
@@ -103,8 +102,6 @@ def main():
         op_invert(args)
     if args.lookup:
         op_lookup(args)
-    if args.disparity:
-        op_disparity(args)
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
@@ -267,19 +264,51 @@ def op_decode(args):
     if not args.invert or args.decoded_file:
         import cv2
         fn = args.decoded_file if args.decoded_file else "decoded.png"
-        im = np.dstack((np.zeros(x.shape), y / args.projector_size[1], x / args.projector_size[0]))
-        maxval = (1 << 16) - 1
-        im = np.round(np.maximum(np.minimum(im * maxval, maxval), 0)).astype(np.uint16)
+        im = np.dstack((np.zeros(x.shape), y, x))
+        if args.normalized:
+            im[:,:,2] /= args.projector_size[0]
+            im[:,:,1] /= args.projector_size[1]
+            maxval = (1 << 16) - 1
+            im = np.round(np.maximum(np.minimum(im * maxval, maxval), 0)).astype(np.uint16)
         cv2.imwrite(fn, im)
 
 def op_invert(args):
+    import promap.reproject
+    import numpy as np
     logger = logging.getLogger(__name__)
-    logger.warning("invert not implemented")
+
+    if not args.projector_size:
+        raise ArgumentError("Unknown projector size")
+
+    if not args.decoded_image:
+        # Load the decoded image from the given file
+        import cv2
+        fn = args.decoded_file if args.decoded_file else "decoded.png"
+        im = cv2.imread(fn)
+        x = im[:,:,2]
+        y = im[:,:,1]
+        if args.normalized:
+            if x.dtype == np.uint8:
+                bits = 8
+            elif x.dtype == np.uint16:
+                bits=16
+            else:
+                raise ArgumentError("Decoded image has unrecognized bit depth")
+            maxval = (1 << bits) - 1
+            x = np.round(x / maxval * args.projector_size[0]).astype(np.int)
+            y = np.round(y / maxval * args.projector_size[1]).astype(np.int)
+    else:
+        x = args.decoded_image[0]
+        y = args.decoded_image[1]
+
+    (camx, camy) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
+    import matplotlib.pyplot as plt
+    plt.imshow(camx)
+    plt.show()
+    plt.imshow(camy)
+    plt.show()
 
 def op_lookup(args):
     logger = logging.getLogger(__name__)
     logger.warning("lookup not implemented")
 
-def op_disparity(args):
-    logger = logging.getLogger(__name__)
-    logger.warning("disparity not implemented")

@@ -36,7 +36,7 @@ def get_size(screen_name=None):
     s = get_screen(screen_name)
     return (s.size().width(), s.size().height())
 
-def project(images, startup_delay=5, period=1, screen_name=None, capture_callback=None):
+def project(images, startup_delay=5, period=2, screen_name=None, capture_callback=None):
     logger = logging.getLogger(__name__)
 
     s = get_screen(screen_name)

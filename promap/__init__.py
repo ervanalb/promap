@@ -53,10 +53,18 @@ def main():
     # Capture / decode
     parser.add_argument("--capture-file", type=str, help="The file to save / load the captured images to / from")
 
+    # Decode
+    parser.add_argument("--threshold-file", type=str, help="The file to save the captured images to after thresholding")
+
+    # Decode / invert
+    parser.add_argument("--decoded-file", type=str, help="The file to save / load the decoded image to / from")
+
     args = parser.parse_args()
 
     # Internal state
     args.gray_code_images = None
+    args.captured_images = None
+    args.decoded_image = None
 
     ops = ("gray",
         "project",
@@ -100,7 +108,7 @@ def main():
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
-    index = "{:0" + str(places) + "d}"
+    index = "{:0" + str(places) + "d}" if places else "{}"
     last_dot = fn.rfind(".")
     if last_dot < 0: # not found
         return fn + index
@@ -189,7 +197,7 @@ def project_and_capture(args):
         i += 1
 
     promap.project.project(args.gray_code_images, args.startup_delay, args.period, args.screen, _capture_callback)
-    stop()
+    args.captured_images = stop()
 
 def op_capture(args):
     logger = logging.getLogger(__name__)
@@ -215,11 +223,52 @@ def op_capture(args):
             i += 1
     except KeyboardInterrupt:
         pass
-    stop()
+    args.captured_images = stop()
 
 def op_decode(args):
+    import promap.decode
+    import numpy as np
     logger = logging.getLogger(__name__)
-    logger.warning("decode not implemented")
+
+    if not args.captured_images:
+        # Load the captured images from the given files
+        import cv2
+        filename_format = filename2format(args.gray_file if args.gray_file else "cap.png")
+        images = []
+        for i in itertools.count():
+            fn = filename_format.format(i)
+            im = cv2.imread(fn)
+            if im is None:
+                break
+            if not args.camera_size:
+                args.camera_size = (im.shape[1], im.shape[0])
+            else:
+                if (im.shape[1], im.shape[0]) != args.camera_size:
+                    raise ArgumentError("Image {} does not match camera size {}x{}".format(fn, args.camera_size[0], args.camera_size[1]))
+            images.append(im)
+        if not images:
+            raise ArgumentError("No images to decode")
+        args.captured_images = images
+
+    if not args.projector_size:
+        raise ArgumentError("Unknown projector size")
+
+    (mask, thresh_images) = promap.decode.threshold_images(args.captured_images)
+    if args.threshold_file:
+        import cv2
+        filename_format = filename2format(args.threshold_file)
+        cv2.imwrite(filename2format(args.threshold_file, places=None).format("mask"), mask)
+        for (i, im) in enumerate(thresh_images):
+            fn = filename_format.format(i)
+            cv2.imwrite(fn, im)
+
+    (x, y) = promap.decode.decode_gray_images(args.projector_size[0], args.projector_size[1], thresh_images)
+    args.decoded_image = np.dstack((x, y))
+    if not args.invert or args.decoded_file:
+        import cv2
+        fn = args.decoded_file if args.decoded_file else "decoded.png"
+        im = np.dstack((args.decoded_image, np.zeros(x.shape))).astype(np.uint16)
+        cv2.imwrite(fn, im)
 
 def op_invert(args):
     logger = logging.getLogger(__name__)

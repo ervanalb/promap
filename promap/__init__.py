@@ -1,6 +1,7 @@
 import argparse
 import logging
 import itertools
+import numpy as np
 
 class ArgumentError(Exception):
     pass
@@ -33,6 +34,7 @@ def main():
     # Global parameters
     parser.add_argument("--camera-size", type=size, help="The camera resolution")
     parser.add_argument("--projector-size", type=size, help="The projector resolution")
+    parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize UV coordinates (use integer pixel coordinates)")
 
     # Gray code / project
     parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns to / from")
@@ -57,7 +59,12 @@ def main():
 
     # Decode / invert
     parser.add_argument("--decoded-file", type=str, help="The file to save / load the decoded image to / from")
-    parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize the color values in the decoded file")
+
+    # Invert
+    parser.add_argument("--disparity-file", type=str, help="The file to save the disparity to")
+
+    # Invert / lookup
+    parser.add_argument("--lookup-file", type=str, help="The file to save / load the lookup table image to / from")
 
     args = parser.parse_args()
 
@@ -65,6 +72,7 @@ def main():
     args.gray_code_images = None
     args.captured_images = None
     args.decoded_image = None
+    args.lookup_image = None
 
     ops = ("gray",
         "project",
@@ -222,9 +230,18 @@ def op_capture(args):
         pass
     args.captured_images = stop()
 
+def float_to_int(a, dtype=np.uint16):
+    minval = np.iinfo(dtype).min
+    maxval = np.iinfo(dtype).max
+    return np.round(np.maximum(np.minimum(minval + (a * (maxval - minval)), maxval), minval)).astype(dtype)
+
+def int_to_float(a):
+    minval = np.iinfo(a.dtype).min
+    maxval = np.iinfo(a.dtype).max
+    return (a - minval) / (maxval - minval)
+
 def op_decode(args):
     import promap.decode
-    import numpy as np
     logger = logging.getLogger(__name__)
 
     if not args.captured_images:
@@ -268,13 +285,12 @@ def op_decode(args):
         if args.normalized:
             im[:,:,2] /= args.projector_size[0]
             im[:,:,1] /= args.projector_size[1]
-            maxval = (1 << 16) - 1
-            im = np.round(np.maximum(np.minimum(im * maxval, maxval), 0)).astype(np.uint16)
+            im = float_to_int(im)
         cv2.imwrite(fn, im)
 
 def op_invert(args):
     import promap.reproject
-    import numpy as np
+    import cv2
     logger = logging.getLogger(__name__)
 
     if not args.projector_size:
@@ -285,28 +301,42 @@ def op_invert(args):
         import cv2
         fn = args.decoded_file if args.decoded_file else "decoded.png"
         im = cv2.imread(fn)
-        x = im[:,:,2]
-        y = im[:,:,1]
         if args.normalized:
-            if x.dtype == np.uint8:
-                bits = 8
-            elif x.dtype == np.uint16:
-                bits=16
-            else:
-                raise ArgumentError("Decoded image has unrecognized bit depth")
-            maxval = (1 << bits) - 1
-            x = np.round(x / maxval * args.projector_size[0]).astype(np.int)
-            y = np.round(y / maxval * args.projector_size[1]).astype(np.int)
+            im = int_to_float(im)
+            x = im[:,:,2]
+            y = im[:,:,1]
+            x = np.round(x * args.projector_size[0]).astype(np.int)
+            y = np.round(y * args.projector_size[1]).astype(np.int)
+        else:
+            x = im[:,:,2]
+            y = im[:,:,1]
     else:
         x = args.decoded_image[0]
         y = args.decoded_image[1]
 
-    (camx, camy) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
-    import matplotlib.pyplot as plt
-    plt.imshow(camx)
-    plt.show()
-    plt.imshow(camy)
-    plt.show()
+    if not args.camera_size:
+        args.camera_size = (x.shape[1], x.shape[0])
+    else:
+        if (x.shape[1], x.shape[0]) != args.camera_size:
+            raise ArgumentError("Decoded image does not match camera size {}x{}".format(args.camera_size[0], args.camera_size[1]))
+
+    ((camx, camy), disparity) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
+    args.lookup_image = np.dstack((camx, camy))
+    if not args.lookup or args.lookup_file:
+        fn = args.lookup_file if args.lookup_file else "lookup.png"
+        im = np.dstack((np.zeros(camx.shape), camy, camx))
+        if args.normalized:
+            im[:,:,2] /= args.camera_size[0]
+            im[:,:,1] /= args.camera_size[1]
+            im = float_to_int(im)
+        cv2.imwrite(fn, im)
+
+    # Write out disparity
+    fn = args.disparity_file if args.disparity_file else "disparity.png"
+    max_disparity = np.amax(disparity)
+    im = disparity / max_disparity
+    im = float_to_int(im)
+    cv2.imwrite(fn, im)
 
 def op_lookup(args):
     logger = logging.getLogger(__name__)

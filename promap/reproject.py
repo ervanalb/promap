@@ -42,13 +42,24 @@ def compute_inverse_and_disparity(x, y, proj_width, proj_height, quantile=0.7, z
     all_proj_pts = np.vstack((all_proj_x, all_proj_y)).T
 
     # Create the inverse image
-    xs = scipy.interpolate.griddata(actuals[found], goals[found][:,0], all_proj_pts, method="linear", fill_value=0)
-    ys = scipy.interpolate.griddata(actuals[found], goals[found][:,1], all_proj_pts, method="linear", fill_value=0)
+    # Nearest interpolation works much better than linear interpolation here. Not sure why.
+    xs = scipy.interpolate.griddata(actuals[found], goals[found][:,0], all_proj_pts, method="nearest", fill_value=0)
+    ys = scipy.interpolate.griddata(actuals[found], goals[found][:,1], all_proj_pts, method="nearest", fill_value=0)
     x_img = xs.reshape((proj_height, proj_width))
     y_img = ys.reshape((proj_height, proj_width))
 
     # Create the inverse disparity map
-    inv_disparity = scipy.interpolate.griddata(actuals[found], disparity[found], all_proj_pts, method="linear", fill_value=0)
+    inv_disparity = scipy.interpolate.griddata(actuals[found], disparity[found], all_proj_pts, method="cubic", fill_value=0)
     d_img = inv_disparity.reshape((proj_height, proj_width))
 
     return ((x_img, y_img), d_img)
+
+def lookup(lookup, im):
+    def interp(grid):
+        return scipy.interpolate.RegularGridInterpolator([np.arange(d) for d in grid.shape[0:2]], grid)
+
+    return interp(im)(lookup[:,:,1::-1])
+
+    #lk = lookup.astype(np.int)
+    #print(lk)
+    #return im[lk[:,:,1], lk[:,:,0]]

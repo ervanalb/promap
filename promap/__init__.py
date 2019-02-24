@@ -2,6 +2,7 @@ import argparse
 import logging
 import itertools
 import numpy as np
+import cv2
 
 class ArgumentError(Exception):
     pass
@@ -65,6 +66,9 @@ def main():
 
     # Invert / lookup
     parser.add_argument("--lookup-file", type=str, help="The file to save / load the lookup table image to / from")
+
+    # Lookup
+    parser.add_argument("--scene", type=str, help="The file to load an extra picture of the scene from")
 
     args = parser.parse_args()
 
@@ -136,7 +140,6 @@ def op_gray(args):
 
     if not args.project or args.gray_file:
         # Save the image if we are not going to project it
-        import cv2
         filename_format = filename2format(args.gray_file if args.gray_file else "gray.png")
         filenames = [filename_format.format(i) for i in range(len(args.gray_code_images))]
         for (fn, im) in zip(filenames, args.gray_code_images):
@@ -153,7 +156,6 @@ def op_project(args):
 
     if not args.gray_code_images:
         # Load the gray code from the given files
-        import cv2
         filename_format = filename2format(args.gray_file if args.gray_file else "gray.png")
         images = []
         for i in itertools.count():
@@ -196,7 +198,6 @@ def project_and_capture(args):
         nonlocal i
         im = capture()
         if filename_format is not None:
-            import cv2
             fn = filename_format.format(i)
             cv2.imwrite(fn, im)
         i += 1
@@ -222,7 +223,6 @@ def op_capture(args):
             input("Press [Enter] to capture image {:03d}...".format(i))
             im = capture()
             if filename_format is not None:
-                import cv2
                 fn = filename_format.format(i)
                 cv2.imwrite(fn, im)
             i += 1
@@ -246,8 +246,7 @@ def op_decode(args):
 
     if not args.captured_images:
         # Load the captured images from the given files
-        import cv2
-        filename_format = filename2format(args.gray_file if args.gray_file else "cap.png")
+        filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
         images = []
         for i in itertools.count():
             fn = filename_format.format(i)
@@ -269,7 +268,6 @@ def op_decode(args):
 
     (mask, thresh_images) = promap.decode.threshold_images(args.captured_images)
     if args.threshold_file:
-        import cv2
         filename_format = filename2format(args.threshold_file)
         cv2.imwrite(filename2format(args.threshold_file, places=None).format("mask"), mask)
         for (i, im) in enumerate(thresh_images):
@@ -279,7 +277,6 @@ def op_decode(args):
     (x, y) = promap.decode.decode_gray_images(args.projector_size[0], args.projector_size[1], thresh_images)
     args.decoded_image = np.dstack((x, y))
     if not args.invert or args.decoded_file:
-        import cv2
         fn = args.decoded_file if args.decoded_file else "decoded.png"
         im = np.dstack((np.zeros(x.shape), y, x))
         if args.normalized:
@@ -290,15 +287,13 @@ def op_decode(args):
 
 def op_invert(args):
     import promap.reproject
-    import cv2
     logger = logging.getLogger(__name__)
 
     if not args.projector_size:
         raise ArgumentError("Unknown projector size")
 
-    if not args.decoded_image:
+    if args.decoded_image is None:
         # Load the decoded image from the given file
-        import cv2
         fn = args.decoded_file if args.decoded_file else "decoded.png"
         im = cv2.imread(fn)
         if args.normalized:
@@ -339,6 +334,63 @@ def op_invert(args):
     cv2.imwrite(fn, im)
 
 def op_lookup(args):
+    import promap.reproject
     logger = logging.getLogger(__name__)
-    logger.warning("lookup not implemented")
 
+    scenes = []
+    fns = []
+    if args.scene:
+        im = cv2.imread(args.scene)
+        new_fn = args.reprojected_file if args.reprojected_file else "reprojected.png"
+        if not args.camera_size:
+            args.camera_size = (im.shape[1], im.shape[0])
+        else:
+            if (im.shape[1], im.shape[0]) != args.camera_size:
+                raise ArgumentError("Scene image {} does not match camera size {}x{}".format(args.scene, args.camera_size[0], args.camera_size[1]))
+        scenes = [im]
+        fns = [new_fn]
+    else:
+        if not args.captured_images:
+            # Load the captured images from the given files
+            filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
+            for i in range(2):
+                fn = filename_format.format(i)
+                im = cv2.imread(fn)
+                if im is None:
+                    break
+                if not args.camera_size:
+                    args.camera_size = (im.shape[1], im.shape[0])
+                else:
+                    if (im.shape[1], im.shape[0]) != args.camera_size:
+                        raise ArgumentError("Scene image {} does not match camera size {}x{}".format(fn, args.camera_size[0], args.camera_size[1]))
+                scenes.append(im)
+        else:
+            scenes = args.captured_images[0:2]
+        fns = ["dark.png", "light.png"][0:len(scenes)]
+
+    if len(scenes) == 0:
+        raise ArgumentError("No scene to reproject!")
+
+    if args.lookup_image is None:
+        # Load the lookup image from the given file
+        fn = args.lookup_file if args.lookup_file else "lookup.png"
+        im = cv2.imread(fn)
+        if args.normalized:
+            im = int_to_float(im)
+            x = im[:,:,2]
+            y = im[:,:,1]
+            x = np.round(x * args.camera_size[0]).astype(np.int)
+            y = np.round(y * args.camera_size[1]).astype(np.int)
+            args.lookup_image = np.dstack((x, y))
+        else:
+            args.lookup_image = np.dstack((im[:,:,2], im[:,:,1]))
+
+    if not args.projector_size:
+        args.projector_size = (x.shape[1], x.shape[0])
+    else:
+        if (args.lookup_image.shape[1], args.lookup_image.shape[0]) != args.projector_size:
+            raise ArgumentError("Lookup image does not match projector size {}x{}".format(args.projector_size[0], args.projector_size[1]))
+
+    for (fn, scene) in zip(fns, scenes):
+        im = promap.reproject.lookup(args.lookup_image, scene)
+        cv2.imwrite(fn, im)

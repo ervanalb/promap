@@ -1,5 +1,5 @@
 # promap
-Projection mapping pipeline
+![projection mapping onto a squishable](doc/squishable.gif)
 
 ## What is it?
 
@@ -15,6 +15,8 @@ You can import the maps that it generates straight into your [digital video work
 or you can post-process them into masks and uvmaps first using image processing tools.
 
 ## How does it work?
+
+![flowchart of the promap pipeline](doc/promap.png)
 
 1. Generate gray code images
 2. Project the gray code images

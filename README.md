@@ -29,8 +29,8 @@ The scanning only takes about a minute.
 You can also perform a subset of these tasks,
 either to introspect the data,
 or to tweak the pipeline to your satisfaction.
-The output of any of steps can be saved,
-and the input of any step can be loaded.
+The output of any of step can be saved,
+and the input to any step can be loaded.
 
 > N.B. In step 2, "project" refers to displaying pictures on a video projector.
 > In step 6, "reproject" refers to a mathematical computation and does not require a video projector.

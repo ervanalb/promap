@@ -33,6 +33,7 @@ def main():
     parser.add_argument("-a", "--all", action="store_true", help="Do all of these operations")
 
     # Global parameters
+    parser.add_argument("-f", "--all-files", action="store_true", help="Store all intermediate results into files")
     parser.add_argument("--camera-size", type=size, help="The camera resolution")
     parser.add_argument("--projector-size", type=size, help="The projector resolution")
     parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize UV coordinates (use integer pixel coordinates)")
@@ -139,7 +140,7 @@ def op_gray(args):
 
     args.gray_code_images = promap.gray.generate_images(*args.projector_size)
 
-    if not args.project or args.gray_file:
+    if not args.project or args.gray_file or args.all_files:
         # Save the image if we are not going to project it
         filename_format = filename2format(args.gray_file if args.gray_file else "gray.png")
         filenames = [filename_format.format(i) for i in range(len(args.gray_code_images))]
@@ -192,7 +193,7 @@ def project_and_capture(args):
 
     i = 0
     filename_format = None
-    if not args.decode or args.capture_file:
+    if not args.decode or args.capture_file or args.all_files:
         filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
 
     def _capture_callback():
@@ -216,7 +217,7 @@ def op_capture(args):
     (capture, stop) = promap.capture.capture(args.camera, *args.camera_size)
     i = 0
     filename_format = None
-    if not args.decode or args.capture_file:
+    if not args.decode or args.capture_file or args.all_files:
         filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
     try:
         print("Press Ctrl-C to finish capturing.")
@@ -268,16 +269,17 @@ def op_decode(args):
         raise ArgumentError("Unknown projector size")
 
     (mask, thresh_images) = promap.decode.threshold_images(args.captured_images)
-    if args.threshold_file:
-        filename_format = filename2format(args.threshold_file)
-        cv2.imwrite(filename2format(args.threshold_file, places=None).format("mask"), mask)
+    if args.threshold_file or args.all_files:
+        filename = args.threshold_file if args.threshold_file else "thresh.png"
+        filename_format = filename2format(filename)
+        cv2.imwrite(filename2format(filename, places=None).format("mask"), mask)
         for (i, im) in enumerate(thresh_images):
             fn = filename_format.format(i)
             cv2.imwrite(fn, im)
 
     (x, y) = promap.decode.decode_gray_images(args.projector_size[0], args.projector_size[1], thresh_images)
     args.decoded_image = np.dstack((x, y))
-    if not args.invert or args.decoded_file:
+    if not args.invert or args.decoded_file or args.all_files:
         fn = args.decoded_file if args.decoded_file else "decoded.png"
         im = np.dstack((np.zeros(x.shape), y, x))
         if args.normalized:
@@ -318,7 +320,7 @@ def op_invert(args):
 
     ((camx, camy), disparity) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
     args.lookup_image = np.dstack((camx, camy))
-    if not args.lookup or args.lookup_file:
+    if not args.lookup or args.lookup_file or args.all_files:
         fn = args.lookup_file if args.lookup_file else "lookup.png"
         im = np.dstack((np.zeros(camx.shape), camy, camx))
         if args.normalized:

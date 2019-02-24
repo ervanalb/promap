@@ -43,8 +43,8 @@ def compute_inverse_and_disparity(x, y, proj_width, proj_height, quantile=0.7, z
 
     # Create the inverse image
     # Nearest interpolation works much better than linear interpolation here. Not sure why.
-    xs = scipy.interpolate.griddata(actuals[found], goals[found][:,0], all_proj_pts, method="nearest", fill_value=0)
-    ys = scipy.interpolate.griddata(actuals[found], goals[found][:,1], all_proj_pts, method="nearest", fill_value=0)
+    xs = scipy.interpolate.griddata(actuals[found], goals[found][:,0], all_proj_pts, method="linear", fill_value=0)
+    ys = scipy.interpolate.griddata(actuals[found], goals[found][:,1], all_proj_pts, method="linear", fill_value=0)
     x_img = xs.reshape((proj_height, proj_width))
     y_img = ys.reshape((proj_height, proj_width))
 

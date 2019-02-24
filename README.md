@@ -1,5 +1,5 @@
 # promap
-Python projection mapping pipeline
+Projection mapping pipeline
 
 ## What is it?
 
@@ -20,9 +20,8 @@ or you can post-process them into masks and uvmaps first using image processing 
 2. Project the gray code images
 3. Capture the images using the camera
 4. Decode the images into a lookup table that goes from camera to projector space
-5. Invert the lookup table so it goes from projector to camera space
+5. Invert the lookup table so it goes from projector to camera space, and compute a disparity map using least-squares fitting
 6. Apply the inverted lookup table to the camera's view of the scene, producing the projector's view of the scene
-7. Compute a disparity map of the lookup table using least-squares fitting
 
 `promap` will automatically perform all of these steps for you.
 The scanning only takes about a minute.
@@ -33,6 +32,50 @@ or to tweak the pipeline to your satisfaction.
 The output of any of steps can be saved,
 and the input of any step can be loaded.
 
+## Examples
+
+### Do everything
+
+```
+promap -af
+```
+
+* The `a` flag runs all operations.
+* The `f` flag stores all intermediate results into files.
+
+You may also want:
+
+* The `v` flag to turn on verbose logging so you can see what is going on.
+* The `w` flag to set the working directory (since a lot of files will be generated)
+* The `--camera` flag to set the camera device to use
+
+### Scan only
+
+```
+promap -gpc
+```
+
+`g` for generate, `p` for project, `c` for capture.
+
+The result will be a series of `cap###.png` files ready for analysis.
+
+### Analyze only
+
+```
+promap -dir --projector-size 1920x1080
+```
+
+You will need the series of `cap###.png` files from the previous step.
+
+`d` for decode, `i` for invert, `r` for reproject.
+
+The result will be a disparity map in `disparity.png`,
+and the first two reprojected captures (`cap000.png` and `cap001.png`) in `dark.png` and `light.png`.
+
+You may also want:
+
+* The `--scene` flag to reproject your own image (instead of `cap000.png` and `cap001.png`)
+
 ## What is the status of the project?
 
-A proof of concept works (in the `old` folder) but it is in the process of being overhauled. It is not ready for use yet.
+It should work, but it is not thoroughly tested. Please let me know if there are any problems or feature requests!

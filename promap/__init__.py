@@ -69,6 +69,7 @@ def main():
 
     # Lookup
     parser.add_argument("--scene", type=str, help="The file to load an extra picture of the scene from")
+    parser.add_argument("--reprojected-file", type=str, help="The file to save the extra picture of the scene to, after reprojecting")
 
     args = parser.parse_args()
 
@@ -306,8 +307,8 @@ def op_invert(args):
             x = im[:,:,2]
             y = im[:,:,1]
     else:
-        x = args.decoded_image[0]
-        y = args.decoded_image[1]
+        x = args.decoded_image[:,:,0]
+        y = args.decoded_image[:,:,1]
 
     if not args.camera_size:
         args.camera_size = (x.shape[1], x.shape[0])

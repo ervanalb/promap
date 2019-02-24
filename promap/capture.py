@@ -19,6 +19,8 @@ def open_camera(camera):
 
 def get_camera_size(camera):
     cap = open_camera(camera)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 65535)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 65535)
     w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
     w = int(w)

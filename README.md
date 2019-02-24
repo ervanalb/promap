@@ -1,4 +1,5 @@
 # promap
+![camera scanning setup](doc/setup.jpg)
 ![projection mapping onto a squishable](doc/squishable.gif)
 
 ## What is it?
@@ -80,6 +81,17 @@ and the first two reprojected captures (`cap000.png` and `cap001.png`) in `dark.
 You may also want:
 
 * The `--scene` flag to reproject your own image (instead of `cap000.png` and `cap001.png`)
+
+## Post-processing
+
+In this example, the final `light.png` image was brought into GIMP, and zones were defined using solid colors. A slight gradient was used to draw attention to certain features.
+
+![squishable with ](doc/map.png)
+
+This map was then brought into Radiance, and used as an input to `uvmap` and `mask`.
+![radiance doing projectino mapping](doc/radiance.png)
+
+The result is the GIF at the top of this page.
 
 ## What is the status of the project?
 

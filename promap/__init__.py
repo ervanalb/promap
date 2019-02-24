@@ -143,11 +143,16 @@ def check_imwrite(fn, *args):
     if not cv2.imwrite(fn, *args):
         raise FileWriteError("Could not write {}".format(fn))
 
-def check_imread(fn, *args):
+def imread(fn, *args):
     logger = logging.getLogger(__name__)
     logger.debug("Reading file {}".format(fn))
-    if not cv2.imread(fn, *args):
+    return cv2.imread(fn, *args)
+
+def check_imread(fn, *args):
+    im = imread(fn, *args)
+    if im is None:
         raise FileReadError("Could not read {}".format(fn))
+    return im
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
@@ -197,7 +202,7 @@ def op_project(args):
         images = []
         for i in itertools.count():
             fn = filename_format.format(i)
-            im = check_imread(os.path.join(args.working_directory, fn), cv2.IMREAD_GRAYSCALE)
+            im = imread(os.path.join(args.working_directory, fn), cv2.IMREAD_GRAYSCALE)
             if im is None:
                 break
             if not args.projector_size:
@@ -286,6 +291,9 @@ def op_decode(args):
     logger = logging.getLogger(__name__)
     logger.info("Start operation: decode gray codes")
 
+    if not args.projector_size:
+        raise ArgumentError("Unknown projector size")
+
     if not args.captured_images:
         logger.debug("No captured images in memory, reading from files")
         # Load the captured images from the given files
@@ -293,7 +301,7 @@ def op_decode(args):
         images = []
         for i in itertools.count():
             fn = filename_format.format(i)
-            im = check_imread(os.path.join(args.working_directory, fn))
+            im = imread(os.path.join(args.working_directory, fn))
             if im is None:
                 break
             if not args.camera_size:
@@ -306,9 +314,7 @@ def op_decode(args):
             raise ArgumentError("No images to decode")
         args.captured_images = images
 
-    if not args.projector_size:
-        raise ArgumentError("Unknown projector size")
-
+    logger.debug("Thresholding images")
     (mask, thresh_images) = promap.decode.threshold_images(args.captured_images)
     if args.threshold_file or args.all_files:
         logger.debug("Writing thresholded images to files")
@@ -320,6 +326,7 @@ def op_decode(args):
             fn = filename_format.format(i)
             check_imwrite(os.path.join(args.working_directory, fn), im)
 
+    logger.debug("Gray code decoding")
     (x, y) = promap.decode.decode_gray_images(args.projector_size[0], args.projector_size[1], thresh_images)
     args.decoded_image = np.dstack((x, y))
     if not args.invert or args.decoded_file or args.all_files:
@@ -365,7 +372,7 @@ def op_invert(args):
 
     ((camx, camy), disparity) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
     args.lookup_image = np.dstack((camx, camy))
-    if not args.lookup or args.lookup_file or args.all_files:
+    if not args.reproject or args.lookup_file or args.all_files:
         fn = args.lookup_file if args.lookup_file else "lookup.png"
         im = np.dstack((np.zeros(camx.shape), camy, camx))
         if args.normalized:
@@ -384,7 +391,7 @@ def op_invert(args):
 def op_reproject(args):
     import promap.reproject
     logger = logging.getLogger(__name__)
-    logger.info("Start operation: ")
+    logger.info("Start operation: reproject images")
 
     scenes = []
     fns = []
@@ -408,7 +415,7 @@ def op_reproject(args):
             filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
             for i in range(2):
                 fn = filename_format.format(i)
-                im = check_imread(os.path.join(args.working_directory, fn))
+                im = imread(os.path.join(args.working_directory, fn))
                 if im is None:
                     break
                 if not args.camera_size:

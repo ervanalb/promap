@@ -20,7 +20,6 @@ class FileReadError(PromapError):
 def main():
     logger = logging.getLogger(__name__)
     logging.basicConfig()
-    parser = argparse.ArgumentParser(prog="promap")
 
     def size(s):
         dims = s.lower().split("x")
@@ -32,58 +31,78 @@ def main():
             raise ValueError("Width and height must be integers in base-10") from e
         return (w, h)
 
+    description = """promap is a command-line tool that you can use in conjunction with your digital video workflow to do projection mapping.
+promap uses a projector and a single camera to compute the physical scene as viewed from the projector, as well as a coarse disparity (depth) map.
+You can import the maps that it generates straight into your digital video workflow, or you can post-process them into masks and uvmaps first using image processing tools.
+"""
+
+    parser = argparse.ArgumentParser(prog="promap", description=description)
+
     # Main operations
-    parser.add_argument("-g", "--gray", action="store_true", help="Generate a set of gray code patterns for projection")
-    parser.add_argument("-p", "--project", action="store_true", help="Project gray code patterns")
-    parser.add_argument("-c", "--capture", action="store_true", help="Capture the gray code projection with the camera")
-    parser.add_argument("-d", "--decode", action="store_true", help="Decode a series of gray code images into a lookup image that goes from camera to projector space")
-    parser.add_argument("-i", "--invert", action="store_true", help="Invert a lookup image (so that it goes from projector to camera space)")
-    parser.add_argument("-r", "--reproject", action="store_true", help="Reproject an image from camera space to projector space using a lookup image")
-    parser.add_argument("-a", "--all", action="store_true", help="Do all of these operations")
+    group = parser.add_argument_group("Operations", "Specify what operations are to be performed. Must select a contiguous set.")
+    group.add_argument("-g", "--gray", action="store_true", help="Generate a set of gray code patterns for projection")
+    group.add_argument("-p", "--project", action="store_true", help="Project gray code patterns")
+    group.add_argument("-c", "--capture", action="store_true", help="Capture the gray code projection with the camera")
+    group.add_argument("-d", "--decode", action="store_true", help="Decode a series of gray code images into a lookup image that goes from camera to projector space")
+    group.add_argument("-i", "--invert", action="store_true", help="Invert a lookup image (so that it goes from projector to camera space)")
+    group.add_argument("-r", "--reproject", action="store_true", help="Reproject an image from camera space to projector space using a lookup image")
+    group.add_argument("-a", "--all", action="store_true", help="Do all of these operations")
 
     # Global parameters
-    parser.add_argument("-f", "--all-files", action="store_true", help="Store all intermediate results into files")
-    parser.add_argument("-w", "--working-directory", type=str, help="Save and load files in this directory", default="")
-    parser.add_argument("--camera-size", type=size, help="The camera resolution")
-    parser.add_argument("--projector-size", type=size, help="The projector resolution")
-    parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize UV coordinates (use integer pixel coordinates)")
+    group = parser.add_argument_group("Globals", "These global parameters affect all operations.")
+    group.add_argument("-f", "--all-files", action="store_true", help="Store all intermediate results into files")
+    group.add_argument("-w", "--working-directory", type=str, help="Save and load files in this directory", default="")
+    group.add_argument("--camera-size", type=size, help="The camera resolution")
+    group.add_argument("--projector-size", type=size, help="The projector resolution")
+    group.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize UV coordinates (use integer pixel coordinates)")
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Print out extra debugging information")
     group.add_argument("-q", "--quiet", dest="quiet", action="store_true", help="Only print out warnings and errors")
 
     # Gray code / project
-    parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns to / from")
+    group = parser.add_argument_group("Gray code & project")
+    group.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns to / from")
 
     # Project
-    parser.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
+    group = parser.add_argument_group("Project")
+    group.add_argument("--screen", type=str, help="The name of the screen output connected to the projector")
 
     # Project / Capture
-    parser.add_argument("--startup_delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
-                        default=5)
-    parser.add_argument("--period", type=float, help="How long to display each frame for in seconds",
-                        default=2)
+    group = parser.add_argument_group("Project & capture")
+    group.add_argument("--startup_delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
+                       default=5)
+    group.add_argument("--period", type=float, help="How long to display each frame for in seconds",
+                       default=2)
 
     # Capture
-    parser.add_argument("--camera", type=str, help="The name of the camera device to open")
+    group = parser.add_argument_group("Capture")
+    group.add_argument("--camera", type=str, help="The name of the camera device to open")
 
     # Capture / decode
-    parser.add_argument("--capture-file", type=str, help="The file to save / load the captured images to / from")
+    group = parser.add_argument_group("Capture & decode")
+    group.add_argument("--capture-file", type=str, help="The file to save / load the captured images to / from")
 
     # Decode
-    parser.add_argument("--threshold-file", type=str, help="The file to save the captured images to after thresholding")
+    group = parser.add_argument_group("Decode")
+    group.add_argument("--threshold-file", type=str, help="The file to save the captured images to after thresholding")
 
     # Decode / invert
-    parser.add_argument("--decoded-file", type=str, help="The file to save / load the decoded image to / from")
+    group = parser.add_argument_group("Decode & invert")
+    group.add_argument("--decoded-file", type=str, help="The file to save / load the decoded image to / from")
 
     # Invert
-    parser.add_argument("--disparity-file", type=str, help="The file to save the disparity to")
+    group = parser.add_argument_group("Invert")
+    group.add_argument("--disparity-file", type=str, help="The file to save the disparity to")
 
     # Invert / reproject
-    parser.add_argument("--lookup-file", type=str, help="The file to save / load the lookup table image to / from")
+    group = parser.add_argument_group("Invert & reproject")
+    group.add_argument("--lookup-file", type=str, help="The file to save / load the lookup table image to / from")
 
-    # Lookup
-    parser.add_argument("--scene", type=str, help="The file to load an extra picture of the scene from")
-    parser.add_argument("--reprojected-file", type=str, help="The file to save the extra picture of the scene to, after reprojecting")
+    # Reproject
+    group = parser.add_argument_group("Reproject")
+    group.add_argument("--scene", type=str, help="The file to load an extra picture of the scene from")
+    group.add_argument("--reprojected-file", type=str, help="The file to save the extra picture of the scene to, after reprojecting")
 
     args = parser.parse_args()
     if args.verbose:

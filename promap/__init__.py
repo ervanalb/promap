@@ -70,7 +70,7 @@ You can import the maps that it generates straight into your digital video workf
 
     # Project / Capture
     group = parser.add_argument_group("Project & capture")
-    group.add_argument("--startup_delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
+    group.add_argument("--startup-delay", type=float, help="How long to wait for camera settings to stabilize before displaying the first frame in seconds",
                        default=5)
     group.add_argument("--period", type=float, help="How long to display each frame for in seconds",
                        default=2)
@@ -94,6 +94,10 @@ You can import the maps that it generates straight into your digital video workf
     # Invert
     group = parser.add_argument_group("Invert")
     group.add_argument("--disparity-file", type=str, help="The file to save the disparity to")
+    group.add_argument("--quantile", type=float, help="What fraction of the data to keep for least-squares fit",
+                       default=.7)
+    group.add_argument("--z-score", type=float, help="How many standard deviations away from the mean constitutes an outlier in the disparity map",
+                       default=4)
 
     # Invert / reproject
     group = parser.add_argument_group("Invert & reproject")
@@ -389,7 +393,8 @@ def op_invert(args):
         if (x.shape[1], x.shape[0]) != args.camera_size:
             raise ArgumentError("Decoded image does not match camera size {}x{}".format(args.camera_size[0], args.camera_size[1]))
 
-    ((camx, camy), disparity) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1])
+    ((camx, camy), disparity) = promap.reproject.compute_inverse_and_disparity(x, y, args.projector_size[0], args.projector_size[1],
+        args.quantile, args.z_score)
     args.lookup_image = np.dstack((camx, camy))
     if not args.reproject or args.lookup_file or args.all_files:
         fn = args.lookup_file if args.lookup_file else "lookup.png"

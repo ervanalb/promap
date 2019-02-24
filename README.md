@@ -21,7 +21,7 @@ or you can post-process them into masks and uvmaps first using image processing 
 3. Capture the images using the camera
 4. Decode the images into a lookup table that goes from camera to projector space
 5. Invert the lookup table so it goes from projector to camera space, and compute a disparity map using least-squares fitting
-6. Apply the inverted lookup table to the camera's view of the scene, producing the projector's view of the scene
+6. Reproject camera's view of the scene (using the inverted lookup table) producing the projector's view of the scene
 
 `promap` will automatically perform all of these steps for you.
 The scanning only takes about a minute.
@@ -31,6 +31,9 @@ either to introspect the data,
 or to tweak the pipeline to your satisfaction.
 The output of any of steps can be saved,
 and the input of any step can be loaded.
+
+> N.B. In step 2, "project" refers to displaying pictures on a video projector.
+> In step 6, "reproject" refers to a mathematical computation and does not require a video projector.
 
 ## Examples
 

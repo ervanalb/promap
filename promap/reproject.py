@@ -54,12 +54,8 @@ def compute_inverse_and_disparity(x, y, proj_width, proj_height, quantile=0.7, z
 
     return ((x_img, y_img), d_img)
 
-def lookup(lookup, im):
+def reproject(lookup, im):
     def interp(grid):
         return scipy.interpolate.RegularGridInterpolator([np.arange(d) for d in grid.shape[0:2]], grid)
 
     return interp(im)(lookup[:,:,1::-1])
-
-    #lk = lookup.astype(np.int)
-    #print(lk)
-    #return im[lk[:,:,1], lk[:,:,0]]

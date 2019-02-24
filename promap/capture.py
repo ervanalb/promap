@@ -1,9 +1,10 @@
+import promap
 import cv2
 import logging
 import threading
 import time
 
-class CaptureError(Exception):
+class CaptureError(promap.PromapError):
     pass
 
 def open_camera(camera):

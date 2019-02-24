@@ -1,3 +1,4 @@
+import promap
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QGridLayout
 from PyQt5.QtCore import QTimer
@@ -5,7 +6,7 @@ import logging
 
 app = QApplication([])
 
-class ProjectError(Exception):
+class ProjectError(promap.PromapError):
     pass
 
 def get_screen(screen_name=None):

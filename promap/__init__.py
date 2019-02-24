@@ -1,16 +1,25 @@
 import argparse
 import logging
 import itertools
+import os
 import numpy as np
 import cv2
 
-class ArgumentError(Exception):
+class PromapError(Exception):
+    pass
+
+class ArgumentError(PromapError):
+    pass
+
+class FileWriteError(PromapError):
+    pass
+
+class FileReadError(PromapError):
     pass
 
 def main():
     logger = logging.getLogger(__name__)
     logging.basicConfig()
-    logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser(prog="promap")
 
     def size(s):
@@ -29,14 +38,18 @@ def main():
     parser.add_argument("-c", "--capture", action="store_true", help="Capture the gray code projection with the camera")
     parser.add_argument("-d", "--decode", action="store_true", help="Decode a series of gray code images into a lookup image that goes from camera to projector space")
     parser.add_argument("-i", "--invert", action="store_true", help="Invert a lookup image (so that it goes from projector to camera space)")
-    parser.add_argument("-l", "--lookup", action="store_true", help="Convert an image from camera space to projector space using a lookup image")
+    parser.add_argument("-r", "--reproject", action="store_true", help="Reproject an image from camera space to projector space using a lookup image")
     parser.add_argument("-a", "--all", action="store_true", help="Do all of these operations")
 
     # Global parameters
     parser.add_argument("-f", "--all-files", action="store_true", help="Store all intermediate results into files")
+    parser.add_argument("-w", "--working-directory", type=str, help="Save and load files in this directory", default="")
     parser.add_argument("--camera-size", type=size, help="The camera resolution")
     parser.add_argument("--projector-size", type=size, help="The projector resolution")
     parser.add_argument("--unnormalized", dest="normalized", action="store_false", help="Don't normalize UV coordinates (use integer pixel coordinates)")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Print out extra debugging information")
+    group.add_argument("-q", "--quiet", dest="quiet", action="store_true", help="Only print out warnings and errors")
 
     # Gray code / project
     parser.add_argument("--gray-file", type=str, help="The file to save / load the gray code patterns to / from")
@@ -65,7 +78,7 @@ def main():
     # Invert
     parser.add_argument("--disparity-file", type=str, help="The file to save the disparity to")
 
-    # Invert / lookup
+    # Invert / reproject
     parser.add_argument("--lookup-file", type=str, help="The file to save / load the lookup table image to / from")
 
     # Lookup
@@ -73,6 +86,10 @@ def main():
     parser.add_argument("--reprojected-file", type=str, help="The file to save the extra picture of the scene to, after reprojecting")
 
     args = parser.parse_args()
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    elif args.quiet:
+        logging.getLogger().setLevel(logging.WARNING)
 
     # Internal state
     args.gray_code_images = None
@@ -80,42 +97,57 @@ def main():
     args.decoded_image = None
     args.lookup_image = None
 
-    ops = ("gray",
-        "project",
-        "capture",
-        "decode",
-        "invert",
-        "lookup")
+    try:
+        ops = ("gray",
+            "project",
+            "capture",
+            "decode",
+            "invert",
+            "reproject")
 
-    if args.all:
-        for op in ops:
-            setattr(args, op, True)
+        if args.all:
+            for op in ops:
+                setattr(args, op, True)
 
-    ops_bool = [getattr(args, op) for op in ops]
+        ops_bool = [getattr(args, op) for op in ops]
 
-    if not any(ops_bool):
-        logger.warning("No operations specified--not doing anything")
-        return
+        if not any(ops_bool):
+            logger.warning("No operations specified--not doing anything")
+            return
 
-    ops_indices = [i for (i, b) in enumerate(ops_bool) if b]
-    first = ops_indices[0]
-    last = ops_indices[-1]
-    if ops_indices != list(range(first, last + 1)):
-        missing = [op for (i, op) in enumerate(ops) if i in range(first, last + 1) and i not in ops_indices]
-        raise ArgumentError("Non-contiguous operations specified. Missing: " + ", ".join(missing))
+        ops_indices = [i for (i, b) in enumerate(ops_bool) if b]
+        first = ops_indices[0]
+        last = ops_indices[-1]
+        if ops_indices != list(range(first, last + 1)):
+            missing = [op for (i, op) in enumerate(ops) if i in range(first, last + 1) and i not in ops_indices]
+            raise ArgumentError("Non-contiguous operations specified. Missing: " + ", ".join(missing))
 
-    if args.gray:
-        op_gray(args)
-    if args.project:
-        op_project(args)
-    if args.capture and not args.project: # capturing while projecting is handled by op_project
-        op_capture(args)
-    if args.decode:
-        op_decode(args)
-    if args.invert:
-        op_invert(args)
-    if args.lookup:
-        op_lookup(args)
+        if args.gray:
+            op_gray(args)
+        if args.project:
+            op_project(args)
+        if args.capture and not args.project: # capturing while projecting is handled by op_project
+            op_capture(args)
+        if args.decode:
+            op_decode(args)
+        if args.invert:
+            op_invert(args)
+        if args.reproject:
+            op_reproject(args)
+    except PromapError as e:
+        logger.error("{}: {}".format(str(e.__class__.__name__), str(e)))
+
+def check_imwrite(fn, *args):
+    logger = logging.getLogger(__name__)
+    logger.debug("Writing file {}".format(fn))
+    if not cv2.imwrite(fn, *args):
+        raise FileWriteError("Could not write {}".format(fn))
+
+def check_imread(fn, *args):
+    logger = logging.getLogger(__name__)
+    logger.debug("Reading file {}".format(fn))
+    if not cv2.imread(fn, *args):
+        raise FileReadError("Could not read {}".format(fn))
 
 def filename2format(fn, places=3):
     """Converts a filename to a format string capable of adding an index after the basename"""
@@ -130,6 +162,7 @@ def op_gray(args):
     import promap.gray
 
     logger = logging.getLogger(__name__)
+    logger.info("Start operation: generate gray codes")
 
     if not args.projector_size:
         if args.project:
@@ -139,13 +172,14 @@ def op_gray(args):
             raise ArgumentError("Unknown projector size")
 
     args.gray_code_images = promap.gray.generate_images(*args.projector_size)
+    logger.debug("Generated {} gray code images".format(len(args.gray_code_images)))
 
     if not args.project or args.gray_file or args.all_files:
         # Save the image if we are not going to project it
         filename_format = filename2format(args.gray_file if args.gray_file else "gray.png")
         filenames = [filename_format.format(i) for i in range(len(args.gray_code_images))]
         for (fn, im) in zip(filenames, args.gray_code_images):
-            cv2.imwrite(fn, im)
+            check_imwrite(os.path.join(args.working_directory, fn), im)
 
 def project_get_projector_size(args):
     import promap.project
@@ -155,6 +189,7 @@ def op_project(args):
     import promap.project
 
     logger = logging.getLogger(__name__)
+    logger.info("Start operation: project gray codes")
 
     if not args.gray_code_images:
         # Load the gray code from the given files
@@ -162,7 +197,7 @@ def op_project(args):
         images = []
         for i in itertools.count():
             fn = filename_format.format(i)
-            im = cv2.imread(fn, cv2.IMREAD_GRAYSCALE)
+            im = check_imread(os.path.join(args.working_directory, fn), cv2.IMREAD_GRAYSCALE)
             if im is None:
                 break
             if not args.projector_size:
@@ -184,8 +219,10 @@ def op_project(args):
         promap.project.project(args.gray_code_images, args.startup_delay, args.period, args.screen)
 
 def project_and_capture(args):
-    logger = logging.getLogger(__name__)
     import promap.capture
+
+    logger = logging.getLogger(__name__)
+    logger.info("Projecting and capturing gray codes")
 
     if not args.camera_size:
         args.camera_size = promap.capture.get_camera_size(args.camera)
@@ -201,18 +238,20 @@ def project_and_capture(args):
         im = capture()
         if filename_format is not None:
             fn = filename_format.format(i)
-            cv2.imwrite(fn, im)
+            check_imwrite(os.path.join(args.working_directory, fn), im)
         i += 1
 
     promap.project.project(args.gray_code_images, args.startup_delay, args.period, args.screen, _capture_callback)
     args.captured_images = stop()
 
 def op_capture(args):
-    logger = logging.getLogger(__name__)
     import promap.capture
+    logger = logging.getLogger(__name__)
+    logger.info("Start operation: capture gray codes")
 
     if not args.camera_size:
         args.camera_size = promap.capture.get_camera_size(args.camera)
+        logger.info("Camera size not specified, querying camera gave {}x{}".format(*args.camera_size))
 
     (capture, stop) = promap.capture.capture(args.camera, *args.camera_size)
     i = 0
@@ -226,7 +265,7 @@ def op_capture(args):
             im = capture()
             if filename_format is not None:
                 fn = filename_format.format(i)
-                cv2.imwrite(fn, im)
+                check_imwrite(os.path.join(args.working_directory, fn), im)
             i += 1
     except KeyboardInterrupt:
         pass
@@ -245,14 +284,16 @@ def int_to_float(a):
 def op_decode(args):
     import promap.decode
     logger = logging.getLogger(__name__)
+    logger.info("Start operation: decode gray codes")
 
     if not args.captured_images:
+        logger.debug("No captured images in memory, reading from files")
         # Load the captured images from the given files
         filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
         images = []
         for i in itertools.count():
             fn = filename_format.format(i)
-            im = cv2.imread(fn)
+            im = check_imread(os.path.join(args.working_directory, fn))
             if im is None:
                 break
             if not args.camera_size:
@@ -270,12 +311,14 @@ def op_decode(args):
 
     (mask, thresh_images) = promap.decode.threshold_images(args.captured_images)
     if args.threshold_file or args.all_files:
+        logger.debug("Writing thresholded images to files")
         filename = args.threshold_file if args.threshold_file else "thresh.png"
         filename_format = filename2format(filename)
-        cv2.imwrite(filename2format(filename, places=None).format("mask"), mask)
+        fn = filename2format(filename, places=None).format("mask")
+        check_imwrite(os.path.join(args.working_directory, fn), mask)
         for (i, im) in enumerate(thresh_images):
             fn = filename_format.format(i)
-            cv2.imwrite(fn, im)
+            check_imwrite(os.path.join(args.working_directory, fn), im)
 
     (x, y) = promap.decode.decode_gray_images(args.projector_size[0], args.projector_size[1], thresh_images)
     args.decoded_image = np.dstack((x, y))
@@ -286,19 +329,21 @@ def op_decode(args):
             im[:,:,2] /= args.projector_size[0]
             im[:,:,1] /= args.projector_size[1]
             im = float_to_int(im)
-        cv2.imwrite(fn, im)
+        check_imwrite(os.path.join(args.working_directory, fn), im)
 
 def op_invert(args):
     import promap.reproject
     logger = logging.getLogger(__name__)
+    logger.info("Start operation: invert decoded map")
 
     if not args.projector_size:
         raise ArgumentError("Unknown projector size")
 
     if args.decoded_image is None:
+        logger.debug("No decoded image in memory, reading from file")
         # Load the decoded image from the given file
         fn = args.decoded_file if args.decoded_file else "decoded.png"
-        im = cv2.imread(fn)
+        im = check_imread(os.path.join(args.working_directory, fn))
         if args.normalized:
             im = int_to_float(im)
             x = im[:,:,2]
@@ -327,23 +372,26 @@ def op_invert(args):
             im[:,:,2] /= args.camera_size[0]
             im[:,:,1] /= args.camera_size[1]
             im = float_to_int(im)
-        cv2.imwrite(fn, im)
+        check_imwrite(os.path.join(args.working_directory, fn), im)
 
     # Write out disparity
     fn = args.disparity_file if args.disparity_file else "disparity.png"
     max_disparity = np.amax(disparity)
     im = disparity / max_disparity
     im = float_to_int(im)
-    cv2.imwrite(fn, im)
+    check_imwrite(os.path.join(args.working_directory, fn), im)
 
-def op_lookup(args):
+def op_reproject(args):
     import promap.reproject
     logger = logging.getLogger(__name__)
+    logger.info("Start operation: ")
 
     scenes = []
     fns = []
     if args.scene:
-        im = cv2.imread(args.scene)
+        logger.debug("Only reprojecting given scene file, not captured images")
+        fn = args.scene
+        im = check_imread(os.path.join(args.working_directory, fn))
         new_fn = args.reprojected_file if args.reprojected_file else "reprojected.png"
         if not args.camera_size:
             args.camera_size = (im.shape[1], im.shape[0])
@@ -353,12 +401,14 @@ def op_lookup(args):
         scenes = [im]
         fns = [new_fn]
     else:
+        logger.debug("No scene file specified, reprojecting the first two captured images")
         if not args.captured_images:
+            logger.debug("No captured images in memory, reading from files")
             # Load the captured images from the given files
             filename_format = filename2format(args.capture_file if args.capture_file else "cap.png")
             for i in range(2):
                 fn = filename_format.format(i)
-                im = cv2.imread(fn)
+                im = check_imread(os.path.join(args.working_directory, fn))
                 if im is None:
                     break
                 if not args.camera_size:
@@ -372,12 +422,13 @@ def op_lookup(args):
         fns = ["dark.png", "light.png"][0:len(scenes)]
 
     if len(scenes) == 0:
-        raise ArgumentError("No scene to reproject!")
+        raise ArgumentError("No scene to reproject")
 
     if args.lookup_image is None:
+        logger.debug("No lookup image in memory, reading from file")
         # Load the lookup image from the given file
         fn = args.lookup_file if args.lookup_file else "lookup.png"
-        im = cv2.imread(fn)
+        im = check_imread(os.path.join(args.working_directory, fn))
         if args.normalized:
             im = int_to_float(im)
             x = im[:,:,2]
@@ -395,5 +446,5 @@ def op_lookup(args):
             raise ArgumentError("Lookup image does not match projector size {}x{}".format(args.projector_size[0], args.projector_size[1]))
 
     for (fn, scene) in zip(fns, scenes):
-        im = promap.reproject.lookup(args.lookup_image, scene)
-        cv2.imwrite(fn, im)
+        im = promap.reproject.reproject(args.lookup_image, scene)
+        check_imwrite(os.path.join(args.working_directory, fn), im)

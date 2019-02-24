@@ -1,7 +1,8 @@
+import promap
 import cv2
 import numpy as np
 
-class DecodeError(Exception):
+class DecodeError(promap.PromapError):
     pass
 
 def decode_gray_code(a):

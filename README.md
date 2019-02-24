@@ -11,7 +11,7 @@ to do projection mapping.
 to compute the physical scene as viewed from the projector,
 as well as a coarse disparity (depth) map.
 
-You can import the maps that it generates straight into your digital video workflow,
+You can import the maps that it generates straight into your [digital video workflow](https://radiance.video),
 or you can post-process them into masks and uvmaps first using image processing tools.
 
 ## How does it work?

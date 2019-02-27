@@ -30,5 +30,6 @@ setuptools.setup(
     install_requires=[
         'numpy',
         'scipy',
+        'opencv-python',
     ],
 )

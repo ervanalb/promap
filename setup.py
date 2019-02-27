@@ -14,7 +14,7 @@ or you can post-process them into masks and uvmaps first using image processing 
 
 setuptools.setup(
     name="promap",
-    version="0.0.1",
+    version="0.0.2",
     author="Eric Van Albert",
     author_email="eric@van.al",
     description="Projection mapping pipeline",
@@ -30,6 +30,8 @@ setuptools.setup(
     install_requires=[
         'numpy',
         'scipy',
-        'opencv-python',
     ],
+    entry_points = {
+        'console_scripts': ['promap=promap:main'],
+    }
 )
